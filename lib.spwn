@@ -1,0 +1,105 @@
+header = regex('^\\[.*\\]$')
+variable = regex('^[a-zA-Z0-9]+\\s*:.+$')
+trim = regex('(^\\s+)|(\\s+$)')
+number = regex('^([0-9]+|[0-9]*\\.[0-9]+)$')
+dumb = regex('\\r')
+
+parse = (file:@string){
+    lines = dumb.replace(file,'').split('\n')
+
+    let pointer = 'Header'
+    let infos = {}
+
+    join = (array:@array,joiner:@string){
+        let string = ''
+        for i in ..array.length {
+            if i != 0 {string += joiner}
+            string += array[i] as @string
+        }
+        return string
+    }
+
+    parseVariable = (line:@string){
+        let splitted = line.split(':')
+        let key = trim.replace(splitted.shift(),'')
+        let value = trim.replace(join(splitted,':'),'')
+        return {
+            key,
+            value,
+        }
+    }
+
+    writePointer = (){
+        if !(infos has pointer) {
+            let infos[pointer] = {}
+        }
+    }
+    writePointer()
+
+    for line in lines {
+        if header.match(line) {
+            pointer = line.substr(1,line.length-1)
+            writePointer()
+        } else if line.length > 0 && line.substr(0,2) != '//' {
+            extract parseVariable(line)    
+            let prev = infos[pointer]
+            switch pointer {
+                case 'Header': (){
+                    prev = value
+                }(),
+                case 'Colours': (){
+                    let prev[key] = value.split(',')
+                }(),
+                case 'Events': (){
+                    let prev[key] = value.split(',')
+                }(),
+                case 'HitObjects': (){
+                    let vals = line.split(',')
+                    let object = {
+                        x: vals[0] as @number,
+                        y: vals[1] as @number,
+                        time: vals[2] as @number,
+                        type: vals[3] as @number,
+                        hitSound: vals[4] as @number,
+                        objectParams: vals[5].split(':'),
+                        hitSample: vals[6] if vals.length > 6 else '',
+                    }
+                    if prev.type == @array {
+                        prev.push(object)
+                    } else {
+                        prev = [object]
+                    }
+                }(),
+                else: (){
+                    if variable.match(line) {
+                        switch key {
+                            case "Tags": (){
+                                let prev[key] = value.split(' ')
+                            }(),
+                            case "Bookmarks": (){
+                                let prev[key] = value.split(',')
+                            }(),
+                            else: (){
+                                if number.match(value) {
+                                    let prev[key] = value as @number
+                                } else {
+                                    let prev[key] = value
+                                }
+                            }(),
+                        }
+                    } else {
+                        if prev.type == @array {
+                            prev.push(line)
+                        } else {
+                            prev = [line]
+                        }
+                    }
+                }(),
+            }
+            infos[pointer] = prev
+        }
+    }
+    return infos
+}
+
+return parse
